@@ -47,13 +47,23 @@ class Storage:
     @staticmethod
     def reset_execution_markers() -> bool:
         """
-        重置/清理执行标记，例如防止前一日的执行状态影响新一天的交易计划
+        重置/清理执行标记，防止前一日的执行状态影响新一天的交易计划
         :return: 是否重置成功
         """
         try:
-            # 清理标记文件逻辑（视具体执行逻辑而定）
-            # 例如删除一个 mark.txt 或者在日志中做切割
             logging.info("重置执行标记，准备迎接新交易日")
+            markers_to_remove = [
+                'buy_marker.log', 
+                'sell_marker.log',
+                'pending_sell_orders.json'  # 如果需要一并清空中途未完成的卖单状态
+            ]
+            
+            for marker in markers_to_remove:
+                marker_path = os.path.join(Config.TRADE_PLAN_DIR, marker)
+                if os.path.exists(marker_path):
+                    os.remove(marker_path)
+                    logging.info(f"已清理旧的标记文件: {marker}")
+                    
             return True
         except Exception as e:
             logging.error(f"重置标记时出错: {e}")
