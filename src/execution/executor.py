@@ -64,25 +64,43 @@ class Executor:
         logging.info("开始执行买入计划...")
         if not self.client.connected:
             self.client.start()
+            
+        # 1. 增加获取当前时间判断逻辑
+        current_time = datetime.now().time()
+        start_auction_time = datetime.strptime("09:15:00", "%H:%M:%S").time()
+        end_auction_time = datetime.strptime("09:30:00", "%H:%M:%S").time()
 
         for _, row in plan_df.iterrows():
             stock_code = row['股票代码']
-            price = row['预计买入最大价格']
             volume = row['预计买入股票数量']
             
             if volume <= 0:
                 continue
+                
+            # 2. 根据时间段动态判定 price_type 和 target_price
+            if start_auction_time <= current_time < end_auction_time:
+                # 9:15-9:29 集合竞价：限价单 + 涨停价
+                price_type = xtconstant.FIX_PRICE
+                target_price = row['预计买入最大价格']
+                logging.info(f"[{current_time}] 集合竞价时段，使用限价单，报价 {target_price}")
+            else:
+                # 9:30及以后 连续竞价：对手价模式 (这里假定 config 里配的是类似市价策略，价格可以直接置 0 或照旧传)
+                # 注：如果你的 QMT 接口要求即使是 LATEST_PRICE 也要填值，可以传 0 或保留原来的 price
+                price_type = self.config.PRICE_TYPE 
+                target_price = 0  
+                logging.info(f"[{current_time}] 连续竞价时段，使用 {price_type} 模式")
 
+            # 3. 使用判定好的参数下单
             order_id = self.client.order_stock(
                 stock_code, 
                 xtconstant.STOCK_BUY, 
                 volume, 
-                self.config.PRICE_TYPE, 
-                price, 
+                price_type,      # 修改为动态的 price_type
+                target_price,    # 修改为动态的价格
                 'strategy_buy', 
                 '自动买入'
             )
-            logging.info(f"买入下单: {stock_code}, 数量: {volume}, 价格: {price}, 订单号: {order_id}")
+            logging.info(f"买入下单: {stock_code}, 数量: {volume}, 价格: {target_price}, 订单号: {order_id}")
             time.sleep(0.5) # 避免太快
 
         self._create_marker(marker_file)
@@ -157,4 +175,4 @@ class Executor:
              logging.info(f"保存了 {len(pending_orders)} 个待办卖出订单")
         
         self._create_marker(marker_file)
-        logging.info("卖出计划执行完毕") 
+        logging.info("卖出计划执行完毕")
